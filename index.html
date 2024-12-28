@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospitals Locator</title>
+    <link href="https://unpkg.com/tailwindcss@^2.0/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <style> 
+    </style>
+</head>
+<body class="h-screen w-full bg-white"> 
+<div class="h-screen w-full p-4 flex flex-col items-center">
+    <div class="w-full text-center mb-4 mb-">
+        <h3 class="text-3xl font-bold">Find Hospitals within 5km Radius <br>from your Location</h3>
+    </div>
+    <div class="h-full w-full flex p-8 pt-0 justify-center">
+        <div id="map" class="shadow-lg rounded-lg h-full w-1/2 "></div>
+        <div id="hospital-list" class="h-full overflow-y-scroll border border-gray-300 p-2 w-1/4 ml-20"></div>
+    </div>
+</div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                var userLat = position.coords.latitude;
+                var userLon = position.coords.longitude;
+
+                var map = L.map("map").setView([userLat, userLon], 13);
+
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                }).addTo(map);
+
+                // Add a red marker for user's current location
+                L.circleMarker([userLat, userLon], {
+                    color: 'red',
+                    fillColor: '#f03',
+                    fillOpacity: 0.7,
+                    radius: 8
+                }).addTo(map).bindPopup("You are here").openPopup();
+
+                // Function to add markers and list items
+                function addMarkers(data) {
+                    var hospitals = [];
+
+                    data.elements.forEach(function (element) {
+                        if (element.lat && element.lon) {
+                            var marker = L.marker([element.lat, element.lon]).addTo(map)
+                                .bindPopup("Hospital: " + (element.tags.name || "Unnamed Hospital"));
+
+                            var distance = calculateDistance(userLat, userLon, element.lat, element.lon);
+                            var time = (distance / 5 * 60).toFixed(2); // Assuming average speed of 5 km/h
+
+                            hospitals.push({
+                                name: element.tags.name || "Unnamed Hospital",
+                                lat: element.lat,
+                                lon: element.lon,
+                                time: time
+                            });
+                        }
+                    });
+
+                    // Sort hospitals by time
+                    hospitals.sort((a, b) => a.time - b.time);
+
+                    // Display hospitals in the list
+                    hospitals.forEach(function (hospital) {
+                        var listElement = document.createElement('div');
+                        listElement.className = "list-item p-2 border-b border-gray-200 hover:bg-gray-300 cursor-pointer";
+                        listElement.innerHTML = `
+                            <strong>Hospital:</strong> ${hospital.name}<br>
+                            <strong>Estimated Time:</strong> ${hospital.time} minutes<br>
+                        `;
+
+                        document.getElementById('hospital-list').appendChild(listElement);
+
+                        // Optional: Add click event to the list item to focus the map on the hospital
+                        listElement.addEventListener('click', function () {
+                            map.setView([hospital.lat, hospital.lon], 16);
+                            marker.openPopup();
+                        });
+                    });
+                }
+
+                // Function to calculate distance between two coordinates (Haversine formula)
+                function calculateDistance(lat1, lon1, lat2, lon2) {
+                    var R = 6371; // Radius of the earth in km
+                    var dLat = deg2rad(lat2 - lat1);
+                    var dLon = deg2rad(lat2 - lon2);
+                    var a =
+                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    var distance = R * c; // Distance in km
+                    return distance;
+                }
+
+                function deg2rad(deg) {
+                    return deg * (Math.PI / 180);
+                }
+
+                // Fetch hospital data from Overpass API
+                var overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];node[amenity=hospital](around:5000,${userLat},${userLon});out;`;
+
+                fetch(overpassUrl)
+                    .then(response => response.json())
+                    .then(data => addMarkers(data))
+                    .catch(err => console.error(err));
+            }, function (error) {
+                console.error("Error getting location: ", error);
+            });
+        } else {
+            console.error("Geolocation is not supported by this browser.");
+        }
+    });
+</script>
+</body>
+</html>
